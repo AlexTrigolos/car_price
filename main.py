@@ -41,7 +41,7 @@ class Items(BaseModel):
 
 
 def mileage(df):
-    mileage = []
+    mileage = []  # в зависимости от размерности либо просто добавляем ее, либо умножаем на 1.4
     for i in df['mileage']:
         if str(i).endswith('km/kg'):
             i = i[:-6]
@@ -55,13 +55,20 @@ def mileage(df):
     return mileage
 
 
-def preproc_data_frame(df):
+def missing_and_dimension_columns(df):
+    # избавляемся от размерностей и при необходимости приводим к новому типу
     df['mileage'] = mileage(df)
     df['engine'] = df['engine'].str.replace(' CC', '').astype(float)
     df['max_power'] = df['max_power'].str.replace(' bhp', '').astype(float)
-    missing_columns = list(df.columns[df.isna().sum().ne(0)])
+    missing_columns = list(df.columns[df.isna().sum().ne(0)])  # получаем массив колонок с пропусками
     for missing_column in missing_columns:
-        df[missing_column] = df[missing_column].fillna(train_medians[missing_column])
+        df[missing_column] = df[missing_column].fillna(train_medians[missing_column])  # все пропуски заполняем медианами сохраненными ранее
+    return df
+
+
+def preproc_data_frame(df):
+    df = missing_and_dimension_columns(df)  # Обработка пропусков и полей с размерностями
+
     features = ['fuel', 'seller_type', 'transmission', 'owner', 'seats']  # Колонки которые надо изменить one hot кодировкой
     df = df.drop(['selling_price', 'name', 'torque'], axis=1)  # Поля, которые не должны быть в модели
 
@@ -80,11 +87,10 @@ def predict_item(item: Item) -> float:
 def predict_items(file: UploadFile) -> FileResponse:  # Изменил получаемый и возвращаемый тип, потому что в задании было разное описание, но более интересным показалось получать файл и возвращать новый файл, через сваггер (по пути /docs) делается просто
     df = pd.read_csv(file.filename)  # Получаем файл из файла в датафрейм
     file_name = 'df_test_with_predict.csv'  # Новое имя для файла с предсказанием
+
     preproced_df = preproc_data_frame(df)  # Подготовить данные под обученную модель
-    print(preproced_df)
     predictions = model.predict(preproced_df)  # Сделать предсказание подготовленного датафрейма
     df['predictions'] = predictions  # Записать предсказания в начальный датафрейм
 
     df.to_csv(file_name, index=False)  # Записать датафрейм с предсказанием в новый файл
-    return FileResponse(f'./{file_name}', media_type='application/octet-stream',
-                        filename=file_name)  # Отдать файл на скачивание
+    return FileResponse(f'./{file_name}', media_type='application/octet-stream', filename=file_name)  # Отдать файл на скачивание
